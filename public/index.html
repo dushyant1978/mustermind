@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mustermind — the wearability agent</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <svg class="mark" viewBox="0 0 32 32" aria-hidden="true">
+      <path d="M16 3 L27 7 L27 15 C27 22 21 27 16 29 C11 27 5 22 5 15 L5 7 Z" fill="currentColor"/>
+      <circle cx="25" cy="6" r="3.5" fill="#F59E0B"/>
+    </svg>
+    <div>
+      <h1>Mustermind</h1>
+      <p class="sub">The wearability agent — buy, restyle, wait or skip, with citations</p>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <span id="mcp-badge" class="badge badge-muted">Checking WebMCP…</span>
+    <span id="mode-badge" class="badge badge-muted">Loading…</span>
+    <button id="reset" class="btn-quiet" type="button">Reset demo</button>
+  </div>
+</header>
+
+<div id="fixture-banner" class="banner" hidden>
+  <strong>Demo data.</strong>
+  <span id="fixture-detail">Live AJIO responses were unavailable, so bundled fixtures are shown. These are not live AJIO values.</span>
+</div>
+
+<main class="layout">
+
+  <section class="col-brief" aria-labelledby="brief-h">
+    <h2 id="brief-h">Your brief</h2>
+
+    <div class="card">
+      <div class="field">
+        <label for="occasion">Occasion</label>
+        <select id="occasion">
+          <option value="client-dinner">Client dinner</option>
+          <option value="work">Work</option>
+          <option value="weekend">Weekend</option>
+        </select>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="budget">Budget (₹)</label>
+          <input id="budget" type="number" min="0" step="100" />
+        </div>
+        <div class="field">
+          <label for="pin">PIN code</label>
+          <input id="pin" type="text" inputmode="numeric" maxlength="6" />
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="deadline">Needed by</label>
+        <input id="deadline" type="date" />
+      </div>
+
+      <div class="field">
+        <span class="label">Avoiding</span>
+        <div id="avoid-list" class="chips"></div>
+        <div class="field-row tight">
+          <input id="avoid-input" type="text" placeholder="e.g. Slim Fit" aria-label="Fit to avoid" />
+          <button id="avoid-add" class="btn" type="button">Avoid</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <span class="label">Wardrobe you already own</span>
+        <ul id="wardrobe" class="wardrobe"></ul>
+      </div>
+    </div>
+
+    <h2>Agent activity</h2>
+    <div class="card">
+      <p id="mcp-note" class="note"></p>
+      <ol id="tool-calls" class="tool-calls"></ol>
+    </div>
+  </section>
+
+  <section class="col-results" aria-labelledby="results-h">
+    <div class="section-head">
+      <h2 id="results-h">Wearability verdicts</h2>
+      <span id="result-count" class="note"></span>
+    </div>
+    <div id="results" class="results"></div>
+  </section>
+
+  <section class="col-ledger" aria-labelledby="ledger-h">
+    <h2 id="ledger-h">Decision ledger</h2>
+    <p class="note">Every entry shows who decided: you, the product data, the rules, or the agent.</p>
+    <ol id="ledger" class="ledger"></ol>
+  </section>
+
+</main>
+
+<div id="handoff-layer" class="handoff-layer" hidden>
+  <div class="handoff-card" role="dialog" aria-modal="true" aria-labelledby="handoff-title">
+    <h3 id="handoff-title">Open this product page?</h3>
+    <p id="handoff-item" class="handoff-item"></p>
+    <p class="note">This opens the AJIO product page in a new tab. Nothing is added to a cart and nothing is purchased.</p>
+    <div class="handoff-actions">
+      <button id="handoff-confirm" class="btn btn-primary" type="button">Confirm and open</button>
+      <button id="handoff-cancel" class="btn" type="button">Cancel</button>
+    </div>
+    <p id="handoff-expiry" class="note small"></p>
+  </div>
+</div>
+
+<script type="module" src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+{
+  "name": "mustermind",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Mustermind — the wearability agent. A WebMCP-powered decision layer that returns buy, restyle, wait or skip with cited factors, over public AJIO product and delivery data.",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "check": "node scripts/selfcheck.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
