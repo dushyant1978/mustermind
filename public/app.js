@@ -63,18 +63,24 @@ function renderResults(s) {
     const thumb = p.imageUrl
       ? `<img class="verdict-thumb" src="${esc(p.imageUrl)}" alt="${esc(p.brand ?? '')} ${esc(p.name ?? '')}" loading="lazy" referrerpolicy="no-referrer" />`
       : `<div class="verdict-thumb verdict-thumb-empty" aria-hidden="true"></div>`;
+    const metaBits = [p.color, p.category?.brick, p.fit?.type].filter(Boolean).map(esc).join(' · ');
+    const provenancePill = p.provenance === 'fixture'
+      ? '<span class="pill pill-demo">demo</span>'
+      : '<span class="pill pill-live">live</span>';
 
     return `
     <article class="verdict">
       <div class="verdict-head">
         ${thumb}
-        <span class="decision d-${v.decision}">${v.decision}</span>
         <div class="verdict-title">
-          <div class="name">${esc(p.brand ?? '')} — ${esc(p.name ?? '')}</div>
-          <div class="meta">${esc(p.color ?? '')} · ${esc(p.category?.brick ?? '')} · ${esc(p.fit?.type ?? '')}${p.provenance === 'fixture' ? ' · demo data' : ''}</div>
+          <span class="decision d-${v.decision}">${v.decision}</span>
+          <div class="brand-line">${esc(p.brand ?? '')}</div>
+          <div class="name">${esc(p.name ?? '')}</div>
+          <div class="meta">${metaBits} ${provenancePill}</div>
           <div class="headline">${esc(v.headline)}</div>
         </div>
-        <div class="price">${inr(p.price?.currentINR)}
+        <div class="price">
+          <span class="amount">${inr(p.price?.currentINR)}</span>
           ${p.price?.mrpINR ? `<span class="mrp">${inr(p.price.mrpINR)}</span>` : ''}
         </div>
       </div>
@@ -84,7 +90,7 @@ function renderResults(s) {
           <li>
             <span class="dir ${DIR_CLASS[f.direction]}">${DIR_GLYPH[f.direction]}</span>
             <span><span>${esc(f.label)}</span><br /><span class="factor-why">${esc(f.evidence)}</span></span>
-            <span class="source">${esc(f.source)}</span>
+            <span class="source source-${esc(f.source)}">${esc(f.source)}</span>
           </li>`).join('')}
       </ul>
 
