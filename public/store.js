@@ -6,12 +6,26 @@
 
 const listeners = new Set();
 
+/**
+ * Every store method funnels through api(), so incrementing a counter here
+ * gives us a single source of truth for "is anything in flight". Sequential
+ * calls (e.g. confirmHandoff → refreshBrief) briefly hit 0 between requests;
+ * the render side handles that with a small hide delay to avoid flicker.
+ * Parallel calls (refreshAll's brief+assess) stack correctly on a counter.
+ */
 const api = async (path, options) => {
-  const res = await fetch(path, {
-    ...options,
-    headers: { 'Content-Type': 'application/json', ...(options?.headers ?? {}) },
-  });
-  return res.json();
+  store.loading += 1;
+  store.emit();
+  try {
+    const res = await fetch(path, {
+      ...options,
+      headers: { 'Content-Type': 'application/json', ...(options?.headers ?? {}) },
+    });
+    return await res.json();
+  } finally {
+    store.loading -= 1;
+    store.emit();
+  }
 };
 
 export const store = {
@@ -22,6 +36,8 @@ export const store = {
   pendingHandoff: null,
   toolCalls: [],
   webmcp: { available: false, tools: [] },
+  // Count of in-flight fetches. Not a boolean because operations overlap.
+  loading: 0,
 
   subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); },
   emit() { for (const fn of listeners) fn(this); },

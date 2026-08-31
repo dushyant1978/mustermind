@@ -39,10 +39,33 @@ function renderBrief(s) {
     : '<li><span class="cat">Nothing listed</span></li>';
 }
 
+const SKELETON_CARD = `
+  <div class="skeleton" aria-hidden="true">
+    <div class="skeleton-thumb"></div>
+    <div class="skeleton-body">
+      <div class="skeleton-row w-30"></div>
+      <div class="skeleton-row w-70"></div>
+      <div class="skeleton-row w-50"></div>
+      <div class="skeleton-row w-40"></div>
+    </div>
+    <div class="skeleton-body">
+      <div class="skeleton-row w-80"></div>
+    </div>
+  </div>`;
+
 function renderResults(s) {
   const el = $('results');
+  // Initial load: no results yet AND something is in flight. Skeletons keep
+  // the layout height stable so the ledger and tool-call panels don't jump
+  // when the real cards land.
+  if (s.results.length === 0 && s.loading > 0) {
+    el.innerHTML = SKELETON_CARD.repeat(4);
+    $('result-count').textContent = 'loading…';
+    return;
+  }
   if (!s.results.length) {
     el.innerHTML = '<div class="empty">No candidates yet.</div>';
+    $('result-count').textContent = '';
     return;
   }
 
@@ -50,8 +73,11 @@ function renderResults(s) {
     a[r.verdict.decision] = (a[r.verdict.decision] ?? 0) + 1;
     return a;
   }, {});
-  $('result-count').textContent = ['buy', 'restyle', 'wait', 'skip']
+  const summary = ['buy', 'restyle', 'wait', 'skip']
     .filter((k) => counts[k]).map((k) => `${counts[k]} ${k}`).join(' · ');
+  // If results are showing AND a fetch is in flight, we're recomputing —
+  // the existing cards are stale for a moment. Say so instead of pretending.
+  $('result-count').textContent = s.loading > 0 ? `${summary} · recomputing…` : summary;
 
   el.innerHTML = s.results.map((r) => {
     const v = r.verdict;
@@ -150,7 +176,22 @@ function renderHandoff(s) {
   $('handoff-expiry').textContent = `This confirmation expires in ${h.expiresInSeconds} seconds.`;
 }
 
+// Anti-flicker on the top progress bar. Fast fetches (< 100ms) never show
+// the bar; back-to-back sequential fetches keep it visible across the gap.
+const progressTimers = { show: null, hide: null };
+function renderProgress(s) {
+  const p = $('progress');
+  if (!p) return;
+  clearTimeout(progressTimers.show); clearTimeout(progressTimers.hide);
+  if (s.loading > 0) {
+    progressTimers.show = setTimeout(() => { p.hidden = false; }, 100);
+  } else {
+    progressTimers.hide = setTimeout(() => { p.hidden = true; }, 150);
+  }
+}
+
 function render(s) {
+  renderProgress(s);
   renderBrief(s);
   renderResults(s);
   renderLedger(s);
