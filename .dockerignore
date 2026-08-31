@@ -1,0 +1,22 @@
+# Anything not needed at runtime. Keeps the build context small and the
+# image lean. Also prevents accidentally baking in local state or secrets.
+
+.git
+.gitignore
+.gitattributes
+.claude
+.claude/
+.env
+.env.*
+.DS_Store
+node_modules
+*.log
+work/
+
+# Docker/deploy metadata is used by the platform, not the container itself.
+Dockerfile
+.dockerignore
+render.yaml
+
+# Repo docs — nice to have on GitHub, not needed inside the container.
+HANDOFF.md

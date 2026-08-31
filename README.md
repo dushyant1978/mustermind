@@ -157,6 +157,52 @@ The 40 assertions cover the parsing traps and the decision rules that the demo d
 
 ---
 
+## Deploying as a hosted container
+
+Mustermind ships with a `Dockerfile` and a Render Blueprint (`render.yaml`).
+The container has **zero npm dependencies** — nothing to install, nothing to
+build. The resulting image is under 55 MB.
+
+### One-click Render deploy
+
+1. Push this repo to your GitHub account.
+2. In the Render dashboard: **New → Blueprint → connect the `mustermind` repo**.
+3. Approve. Render reads `render.yaml`, builds the `Dockerfile`, and boots on
+   a free-plan web service at `https://<name>.onrender.com`. The health check
+   at `/api/brief` decides readiness.
+
+`autoDeploy: true` in the Blueprint redeploys on every push to `main`. Turn
+off if you'd rather deploy manually.
+
+### Local docker
+
+```bash
+docker build -t mustermind .
+docker run --rm -p 5173:5173 mustermind
+# open http://localhost:5173
+```
+
+The container reads `$PORT` at runtime (Render, Fly, Cloud Run all inject
+it) and falls back to 5173. It runs as a non-root user.
+
+### About the free tier
+
+Render's free plan spins the container down after 15 minutes of inactivity.
+The first request after a spin-down takes ~30 seconds while the container
+wakes and the initial AJIO search runs. If that's not acceptable for a demo
+video, upgrade the `plan:` field in `render.yaml` before deploying.
+
+### Env vars, deliberately minimal
+
+- `PORT` — injected by the platform. No manual setup.
+- `NODE_ENV=production` — set in `render.yaml`, decorative here (no deps).
+- `POW_ALLOW_ANY_STYLE` — **do not set in production.** The tighter
+  invariant is that only codes AJIO's own search returned this session are
+  fetchable. `POW_ALLOW_ANY_STYLE=1` is a local escape hatch for testing an
+  arbitrary style code (see `lib/upstream.js`).
+
+---
+
 ## Layout
 
 ```
@@ -169,7 +215,9 @@ lib/fixtures.js        demo data in raw shape
 public/webmcp.js       the five tool registrations
 public/store.js        shared state — UI and agent write to the same place
 public/app.js          rendering and the control fallbacks
-scripts/selfcheck.js   40 assertions
+scripts/selfcheck.js   48 assertions
+Dockerfile             container image, non-root, no build step
+render.yaml            Render Blueprint for one-click deploy
 ```
 
 `lib/verdict.js` is a rule engine on purpose. The agent has to narrate why a verdict is what it is, and a scorer you can't read gives it nothing to say.

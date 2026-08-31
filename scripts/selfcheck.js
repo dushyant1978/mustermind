@@ -6,6 +6,7 @@
 import { normalizeProduct, parseRaterCount, sanitize, safeImageUrl } from '../lib/normalize.js';
 import { evaluateWearability } from '../lib/verdict.js';
 import { FIXTURES, EDD_FIXTURES } from '../lib/fixtures.js';
+import { isAllowedStyleCode, allowStyleCodes, clearAllowedStyleCodes } from '../lib/upstream.js';
 import { applyTradeoff, state, createHandoff, consumeHandoff, resetSession } from '../lib/state.js';
 
 let pass = 0, fail = 0;
@@ -123,6 +124,22 @@ const raised = evaluateWearability(P('705678901'), D('705678901'), { ...brief(),
 ok('raising budget turns the blazer into the buy', raised.decision === 'buy', raised.decision);
 ok('nothing is a buy at the starting budget',
   Object.keys(FIXTURES).every((c) => v(c).decision !== 'buy'));
+
+console.log('\nstyle-code allowlist');
+{
+  // Regression guard. Live search loads real style codes; if the allowlist
+  // doesn't learn them, getProductTruth rejects every candidate and the app
+  // renders an empty list under a confident "Live AJIO data" badge.
+  const live = '999888777';
+  ok('a code the server has not seen is refused', isAllowedStyleCode(live) === false);
+  ok('fixture codes are always allowed', isAllowedStyleCode(Object.keys(FIXTURES)[0]) === true);
+  allowStyleCodes([live]);
+  ok('a code returned by AJIO search becomes fetchable', isAllowedStyleCode(live) === true);
+  allowStyleCodes(['not-a-code', '12']);
+  ok('malformed codes are never admitted', isAllowedStyleCode('not-a-code') === false && isAllowedStyleCode('12') === false);
+  clearAllowedStyleCodes();
+  ok('reset revokes search-earned codes', isAllowedStyleCode(live) === false);
+}
 
 console.log('\nhandoff gate');
 resetSession();

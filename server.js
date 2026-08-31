@@ -102,8 +102,12 @@ const routes = {
       return json(res, r.ok ? 200 : 404, r);
     }
     const results = await assessAll(state.brief);
-    const anyFixture = results.some((r) => r.product.provenance === 'fixture');
-    json(res, 200, { results, mode: anyFixture ? 'fixture' : 'live' });
+    // An empty list is not "live data" — it means every candidate failed to
+    // resolve. Saying 'live' there puts a confident badge over a blank screen.
+    const mode = results.length === 0
+      ? 'empty'
+      : (results.some((r) => r.product.provenance === 'fixture') ? 'fixture' : 'live');
+    json(res, 200, { results, mode });
   },
 
   'POST /api/tradeoff': async (req, res) => {

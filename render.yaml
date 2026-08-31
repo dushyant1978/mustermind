@@ -1,0 +1,25 @@
+# Render Blueprint for Mustermind.
+# Spec: https://render.com/docs/blueprint-spec
+#
+# One-click deploy:
+#   1. Push this file to the repo on GitHub.
+#   2. In Render dashboard: New → Blueprint → connect the mustermind repo.
+#   3. Approve — Render reads this file, builds the Dockerfile, and boots.
+#
+# Free plan spins down after 15 min of inactivity. First request after
+# a spin-down takes ~30 s to wake. Upgrade the `plan` field for always-on.
+
+services:
+  - type: web
+    name: mustermind
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    # Render probes this URL to decide the container is healthy.
+    # /api/brief returns 200 JSON as soon as the server is listening.
+    healthCheckPath: /api/brief
+    # Redeploy every push to main. Turn off if you prefer manual.
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
