@@ -7,7 +7,7 @@ import { normalizeProduct, parseRaterCount, sanitize, safeImageUrl } from '../li
 import { evaluateWearability } from '../lib/verdict.js';
 import { FIXTURES, EDD_FIXTURES } from '../lib/fixtures.js';
 import { isAllowedStyleCode, allowStyleCodes, clearAllowedStyleCodes } from '../lib/upstream.js';
-import { applyTradeoff, state, createHandoff, consumeHandoff, resetSession, canonicalBrick } from '../lib/state.js';
+import { applyTradeoff, state, createHandoff, consumeHandoff, resetSession, canonicalBrick, themeQuery, findOccasion } from '../lib/state.js';
 
 let pass = 0, fail = 0;
 const ok = (name, cond, extra = '') => {
@@ -186,6 +186,68 @@ console.log('\ncustom occasions');
     `${polo.decision} / ${polo.register.tier}`);
 }
 
+console.log('\noccasion search query');
+{
+  resetSession();
+  // Regression. "Goa Trip" fired "men formal shirt" because the query was
+  // derived from the REGISTER, and the UI defaults the register to smart
+  // casual. Register answers "how dressy", not "what garment" — a beach trip
+  // and a brunch are both casual and want completely different clothes.
+  ok('"Goa Trip" searches beachwear, not formal shirts',
+    themeQuery('Goa Trip')?.query === 'men beachwear', JSON.stringify(themeQuery('Goa Trip')));
+
+  const add = applyTradeoff({ type: 'add_occasion', value: { label: 'Goa Trip', register: 'smart-casual' } });
+  ok('and that reaches the occasion the shopper actually added',
+    add.ok && findOccasion('goa-trip').query === 'men beachwear', findOccasion('goa-trip')?.query);
+  ok('the inferred query and its trigger are disclosed',
+    /men beachwear/.test(add.note ?? '') && /goa/.test(add.note ?? ''), add.note);
+
+  // A specific theme must beat a general one regardless of word order.
+  ok('"Manali Trip" prefers winter over the generic trip theme',
+    themeQuery('Manali Trip')?.query === 'men winter jacket', themeQuery('Manali Trip')?.query);
+  ok('"Trip to Manali" too — order in the label does not matter',
+    themeQuery('Trip to Manali')?.query === 'men winter jacket');
+  ok('"Sangeet night" is festive, not party wear',
+    themeQuery('Sangeet night')?.query === 'men festive kurta');
+  ok('"Morning gym session" is activewear',
+    themeQuery('Morning gym session')?.query === 'men activewear');
+  ok('a label matching nothing infers nothing', themeQuery('Zblorp') === null);
+  ok('an empty label infers nothing', themeQuery('') === null);
+
+  // Substring matches would make "training" hit "rain". Word-boundary only.
+  ok('"training" does not match the rain theme',
+    themeQuery('Training day')?.query === 'men activewear', themeQuery('Training day')?.query);
+
+  // No theme: falls back, and says it fell back rather than implying a choice.
+  const vague = applyTradeoff({ type: 'add_occasion', value: { label: 'Zblorp', register: 'formal' } });
+  ok('an unmatched label falls back to the register default',
+    findOccasion('zblorp').query === 'men formal shirt', findOccasion('zblorp')?.query);
+  ok('and the fallback is admitted as broad', /broad/.test(vague.note ?? ''), vague.note);
+
+  // An explicit query always wins over inference.
+  const explicit = applyTradeoff({ type: 'add_occasion', value: { label: 'Goa wedding', register: 'formal', query: 'men linen shirt' } });
+  ok('an explicit query overrides the theme',
+    explicit.ok && findOccasion('goa-wedding').query === 'men linen shirt');
+
+  // A guess you cannot correct is just a wrong answer.
+  applyTradeoff({ type: 'set_occasion', value: 'goa-trip' });
+  ok('the query can be retargeted',
+    applyTradeoff({ type: 'set_occasion_query', value: 'men swimwear' }).ok
+    && findOccasion('goa-trip').query === 'men swimwear');
+  ok('retargeting a built-in works too',
+    (applyTradeoff({ type: 'set_occasion', value: 'work' }),
+      applyTradeoff({ type: 'set_occasion_query', value: 'men chinos' }).ok
+      && findOccasion('work').query === 'men chinos'));
+  ok('an empty query rejected', applyTradeoff({ type: 'set_occasion_query', value: '  ' }).ok === false);
+  ok('an unsearchable query rejected',
+    applyTradeoff({ type: 'set_occasion_query', value: 'shirt?q=<x>' }).ok === false);
+  ok('markup stripped from a retargeted query',
+    applyTradeoff({ type: 'set_occasion_query', value: '<b>men shorts</b>' }).ok
+    && findOccasion('work').query === 'men shorts', findOccasion('work')?.query);
+  resetSession();
+  ok('reset restores a built-in query', findOccasion('work').query === 'men formal shirt');
+}
+
 console.log('\nwardrobe');
 {
   resetSession();
@@ -199,8 +261,13 @@ console.log('\nwardrobe');
   ok('"polo shirt" prefers Tshirts over Shirts', canonicalBrick('polo shirt').brick === 'Tshirts',
     canonicalBrick('polo shirt').brick);
   ok('a phrase matches on a contained word', canonicalBrick('black formal trousers').brick === 'Trousers & Pants');
+  ok('a kurta is now a scored category', canonicalBrick('kurta').brick === 'Kurtas');
+  ok('"kurta set" beats the bare "kurta" word', canonicalBrick('kurta set').brick === '2-Piece Ethnic Suit');
+  ok('a jacket is a coat, not a blazer', canonicalBrick('jacket').brick === 'Jackets & Coats');
+  ok('a suit is a suit set, not a blazer', canonicalBrick('suit').brick === 'Suit Sets');
+  ok('a blazer is still a blazer', canonicalBrick('navy blazer').brick === 'Blazers & Waistcoats');
   ok('an unmatched category is reported, not guessed',
-    canonicalBrick('kurta').brick === null && canonicalBrick('kurta').recognised === false);
+    canonicalBrick('socks').brick === null && canonicalBrick('socks').recognised === false);
 
   const add = applyTradeoff({ type: 'add_wardrobe_item', value: { category: 'blazer', color: 'Charcoal' } });
   ok('a typed category is filed under its brick',
@@ -222,15 +289,15 @@ console.log('\nwardrobe');
   ok('adding the same category and colour twice changes nothing',
     applyTradeoff({ type: 'add_wardrobe_item', value: 'Jeans' }).changed === false);
 
-  const unknown = applyTradeoff({ type: 'add_wardrobe_item', value: { category: 'Kurta', color: 'Cream' } });
+  const unknown = applyTradeoff({ type: 'add_wardrobe_item', value: { category: 'Socks', color: 'Grey' } });
   const stored = state.brief.wardrobe.at(-1);
-  ok('an unscorable item is still listed', unknown.ok && stored.category === 'Kurta');
+  ok('an unscorable item is still listed', unknown.ok && stored.category === 'Socks');
   ok('and is marked as unscored rather than looking accepted',
     stored.recognised === false && /will not move any verdict/.test(unknown.note ?? ''), unknown.note);
 
   ok('markup is stripped from a category',
-    applyTradeoff({ type: 'add_wardrobe_item', value: { category: '<i>Kurta</i>', color: 'Blue' } }).ok
-    && state.brief.wardrobe.at(-1).category === 'Kurta', state.brief.wardrobe.at(-1)?.category);
+    applyTradeoff({ type: 'add_wardrobe_item', value: { category: '<i>Socks</i>', color: 'Blue' } }).ok
+    && state.brief.wardrobe.at(-1).category === 'Socks', state.brief.wardrobe.at(-1)?.category);
   ok('a category with no text rejected', applyTradeoff({ type: 'add_wardrobe_item', value: { color: 'Red' } }).ok === false);
 
   const id = state.brief.wardrobe.at(-1).id;
@@ -248,6 +315,81 @@ const raised = evaluateWearability(P('705678901'), D('705678901'), { ...brief(),
 ok('raising budget turns the blazer into the buy', raised.decision === 'buy', raised.decision);
 ok('nothing is a buy at the starting budget',
   Object.keys(FIXTURES).every((c) => v(c).decision !== 'buy'));
+
+console.log('\ncategory taxonomy');
+{
+  // Before this, a beachwear list scored mostly `buy` on price and fit alone:
+  // Swimwear and Co-ord Sets were in no tier and no top/bottom list, so the
+  // register factor was absent and duplicateRisk was always 0. An engine that
+  // rubber-stamps a category it cannot reason about is the wrong failure for
+  // an app whose argument is recommending nothing when nothing is worth it.
+  const synth = (brick, color = 'Blue', price = 1200) => ({
+    styleCode: '900000001', color, category: { brick },
+    price: { currentINR: price, mrpINR: price },
+    fit: { type: 'Regular Fit' }, measurement: { quality: 'GARMENT_MEASURED' },
+    sizes: [{ size: 'M', inStock: true }, { size: 'L', inStock: true }],
+    crowdFit: null, provenance: 'live',
+  });
+  const at = (occasionId, register, product, wardrobe = []) => evaluateWearability(
+    product,
+    { serviceable: true, etaText: '2-3 days', etaDays: 2, pinCode: '560029', provenance: 'live' },
+    { ...brief(), wardrobe, occasion: occasionId, occasions: [{ id: occasionId, label: 'Test', register }] },
+  );
+
+  // Every category must be classified by at least ONE register — not by all
+  // three. A coat over formalwear and a co-ord set at a formal dinner are
+  // deliberately neutral: neither a recommendation nor a hard stop.
+  for (const brick of ['Swimwear', 'Co-ord Sets', 'Kurtas', 'Track Pants', 'Shorts & 3/4ths',
+    'Sweatshirt & Hoodies', 'Suit Sets', '2-Piece Ethnic Suit', 'Jackets & Coats']) {
+    const classified = ['formal', 'smart-casual', 'casual']
+      .filter((reg) => at('x', reg, synth(brick)).factors.some((f) => f.id === 'occasion'));
+    ok(`${brick} is visible to at least one register`,
+      classified.length > 0, `no register classifies ${brick}`);
+  }
+
+  ok('swimwear is a hard stop at a formal occasion',
+    at('x', 'formal', synth('Swimwear')).decision === 'skip');
+  ok('and the prose reads as English',
+    at('x', 'formal', synth('Swimwear')).factors
+      .some((f) => f.id === 'occasion' && /A swimsuit does not read as/.test(f.evidence)),
+    JSON.stringify(at('x', 'formal', synth('Swimwear')).factors.find((f) => f.id === 'occasion')?.evidence));
+  ok('a kurta reads right at a formal occasion',
+    at('x', 'formal', synth('Kurtas')).factors
+      .some((f) => f.id === 'occasion' && f.direction === '+'));
+  ok('a suit is a hard stop at a casual occasion',
+    at('x', 'casual', synth('Suit Sets')).decision === 'skip');
+  ok('shorts read right at a casual occasion',
+    at('x', 'casual', synth('Shorts & 3/4ths')).factors
+      .some((f) => f.id === 'occasion' && f.direction === '+'));
+  // An ethnic suit at a brunch is overdressed, not embarrassing. Deliberately
+  // not a hard stop — the claim would be too strong.
+  ok('an ethnic suit is not a hard stop at a casual occasion',
+    at('x', 'casual', synth('2-Piece Ethnic Suit')).decision !== 'skip');
+
+  // The smart-casual fail-safe must survive the tier expansion.
+  ok('smart casual still hard-stops nothing',
+    ['Swimwear', 'Tshirts', 'Suit Sets', 'Track Pants', 'Blazers & Waistcoats']
+      .every((b) => at('x', 'smart-casual', synth(b)).decision !== 'skip'));
+
+  // Duplicate detection now covers the new categories.
+  const ownsTrunks = [{ id: 'w9', category: 'Swimwear', color: 'Blue', descriptor: 'Blue trunks', recognised: true }];
+  ok('owning swimwear makes more swimwear a duplicate',
+    at('x', 'casual', synth('Swimwear', 'Blue'), ownsTrunks).decision === 'skip');
+  ok('a different colour is a near-duplicate, not a duplicate',
+    at('x', 'casual', synth('Swimwear', 'Red'), ownsTrunks).duplicateRisk === 0.55);
+
+  // A whole outfit is already the look; it unlocks nothing by pairing.
+  const ownsBottoms = [{ id: 'w8', category: 'Jeans', color: 'Blue', descriptor: 'Blue jeans', recognised: true }];
+  ok('a hoodie pairs with owned bottoms',
+    at('x', 'casual', synth('Sweatshirt & Hoodies'), ownsBottoms).looksUnlocked === 1);
+  ok('a co-ord set unlocks no pairings by design',
+    at('x', 'casual', synth('Co-ord Sets'), ownsBottoms).looksUnlocked === 1);
+  ok('track pants count as a bottom against owned tops',
+    at('x', 'casual', synth('Track Pants'),
+      [{ id: 'w7', category: 'Tshirts', color: 'Black', descriptor: 'Black tee', recognised: true },
+        { id: 'w6', category: 'Kurtas', color: 'White', descriptor: 'White kurta', recognised: true }])
+      .looksUnlocked === 2);
+}
 
 console.log('\nstyle-code allowlist');
 {

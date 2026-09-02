@@ -33,6 +33,10 @@ function renderBrief(s) {
     sel.dataset.ids = wanted;
   }
   if (sel.value !== b.occasion) sel.value = b.occasion;
+
+  // Don't clobber it mid-type; otherwise show what the candidate list came from.
+  const active = (b.occasions ?? []).find((o) => o.id === b.occasion);
+  if (document.activeElement !== $('occasion-q')) $('occasion-q').value = active?.query ?? '';
   if (document.activeElement !== $('budget')) $('budget').value = b.budgetINR ?? '';
   if (document.activeElement !== $('pin')) $('pin').value = b.pin ?? '';
   if (document.activeElement !== $('deadline')) $('deadline').value = b.deadline ?? '';
@@ -241,6 +245,18 @@ function wireEvents() {
     if (open) $('occasion-label').focus();
   };
 
+  const applyQuery = async () => {
+    const q = $('occasion-q').value.trim();
+    if (!q) return showNote('occasion-q-note', 'Give it something to search for.');
+    showNote('occasion-q-note', null);
+    const r = await store.applyTradeoff({ type: 'set_occasion_query', value: q });
+    if (!r.ok) showNote('occasion-q-note', r.error);
+  };
+  $('occasion-q-apply').addEventListener('click', applyQuery);
+  $('occasion-q').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); applyQuery(); }
+  });
+
   $('occasion-toggle').addEventListener('click', () => occasionForm($('occasion-form').hidden));
   $('occasion-cancel').addEventListener('click', () => {
     $('occasion-label').value = '';
@@ -259,6 +275,9 @@ function wireEvents() {
     $('occasion-label').value = '';
     $('occasion-query').value = '';
     occasionForm(false);
+    // The note says which query was inferred and what it matched on. That is
+    // the one thing the shopper most needs to see about a new occasion.
+    showNote('occasion-q-note', r.note ?? null);
   });
 
   // Enter in the label field is the obvious way to submit a two-field form.
@@ -350,6 +369,7 @@ function wireEvents() {
   $('reset').addEventListener('click', () => {
     showNote('wardrobe-note', null);
     showNote('occasion-error', null);
+    showNote('occasion-q-note', null);
     store.reset();
   });
 }

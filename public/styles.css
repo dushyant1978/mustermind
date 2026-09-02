@@ -328,6 +328,8 @@ select {
 .subform .field:last-of-type { margin-bottom: 0; }
 .subform .note { margin: 6px 0 0; }
 .error-note { color: var(--skip); }
+/* A secondary label for a control nested under a primary one. */
+.sublabel { margin-top: 10px; color: var(--text-3); }
 
 /* --- section head ------------------------------------------------------- */
 .section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 12px; }

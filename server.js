@@ -125,7 +125,8 @@ const routes = {
       // Occasion drives both the search query and the register the verdict
       // scores against, so a real change refreshes the candidate list.
       // add_occasion also selects the occasion it just created.
-      if (body.type === 'set_occasion' || body.type === 'add_occasion') await refreshCandidates();
+      if (body.type === 'set_occasion' || body.type === 'add_occasion'
+        || body.type === 'set_occasion_query') await refreshCandidates();
     }
 
     const results = await assessAll(state.brief);

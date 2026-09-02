@@ -26,7 +26,12 @@ function briefSummary(brief) {
     occasion: brief.occasion,
     // The valid set for set_occasion, and it grows at runtime — never assume
     // the three the demo boots with are all there are.
-    occasions: (brief.occasions ?? []).map((o) => ({ id: o.id, label: o.label, register: o.register })),
+    // `query` is what AJIO is actually searched for — exposed because the
+    // description asks the agent to sanity-check it against what the shopper
+    // described, and it cannot check a value it cannot see.
+    occasions: (brief.occasions ?? []).map((o) => ({
+      id: o.id, label: o.label, register: o.register, query: o.query ?? null,
+    })),
     city: brief.city,
     pinCode: brief.pin,
     budgetINR: brief.budgetINR,
@@ -186,6 +191,11 @@ const TOOLS = [
       '"smart-casual" or "casual" — because that is what decides whether a garment is a hard stop ' +
       'for it. Ask the shopper which one rather than guessing at a formality you cannot see. ' +
       'Changing or adding an occasion also refreshes the live candidate list from AJIO search. ' +
+      'An occasion\'s "query" is what AJIO actually gets searched for. When you do not supply one '
+      + 'it is inferred from the label, which is a guess and sometimes a poor one. If the candidates '
+      + 'come back as the wrong KIND of garment rather than merely the wrong items, that is the query, '
+      + 'not the register — say so and offer set_occasion_query. Never silently score a list you can '
+      + 'see is the wrong category. ' +
       'CHANGES STATE: only call it after the shopper has actually said so, never to explore a ' +
       'hypothetical. The change is written to Mustermind\'s Decision Ledger under actor "agent" ' +
       'and is visible to the shopper. Returns the updated verdicts, and a "note" whenever the ' +
@@ -196,14 +206,15 @@ const TOOLS = [
       properties: {
         type: {
           type: 'string',
-          enum: ['set_budget', 'avoid_fit', 'allow_fit', 'avoid_color', 'set_deadline', 'set_pin', 'set_occasion', 'add_occasion', 'add_wardrobe_item', 'remove_wardrobe_item'],
+          enum: ['set_budget', 'avoid_fit', 'allow_fit', 'avoid_color', 'set_deadline', 'set_pin', 'set_occasion', 'add_occasion', 'set_occasion_query', 'add_wardrobe_item', 'remove_wardrobe_item'],
           description: 'Which constraint to change.',
         },
         value: {
           description: 'Number for set_budget. Text for fits/colours. YYYY-MM-DD for set_deadline. '
             + '6 digits for set_pin. An occasion id from the brief\'s occasions list for set_occasion. '
             + 'Object {label, register, query} for add_occasion — register is formal | smart-casual | casual, '
-            + 'query is an optional AJIO search phrase and defaults to the register\'s. '
+            + 'query is the AJIO search phrase and is inferred from the label when omitted. '
+            + 'A search phrase for set_occasion_query, which retargets the selected occasion. '
             + 'Object {category, color} for add_wardrobe_item — category is free text and is filed under the '
             + 'nearest scored category where one matches. The wardrobe item id for remove_wardrobe_item.',
         },

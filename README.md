@@ -8,7 +8,7 @@ It runs entirely on your machine. It does not modify AJIO's web or mobile apps, 
 
 ```bash
 node server.js          # http://localhost:5173
-node scripts/selfcheck.js   # 90 assertions, no test framework
+node scripts/selfcheck.js   # 135 assertions, no test framework
 ```
 
 Node 20+. No dependencies.
@@ -149,7 +149,7 @@ node scripts/selfcheck.js
 grep -rniE "acf-sensor|sensor-data|x-acf" . --exclude=README.md   # must return nothing
 ```
 
-The 90 assertions cover the parsing traps and the decision rules that the demo depends on:
+The 135 assertions cover the parsing traps and the decision rules that the demo depends on:
 
 - `"2.1K"` is a display string, not a number — an unparseable rater count must disable the crowd prior rather than guess
 - `"15 %"` has a space before the percent sign
@@ -224,7 +224,7 @@ lib/fixtures.js        demo data in raw shape
 public/webmcp.js       the five tool registrations
 public/store.js        shared state — UI and agent write to the same place
 public/app.js          rendering and the control fallbacks
-scripts/selfcheck.js   90 assertions
+scripts/selfcheck.js   135 assertions
 Dockerfile             container image, non-root, no build step
 render.yaml            Render Blueprint for one-click deploy
 HOW-IT-WORKS.md        architecture and data-flow walkthrough
@@ -243,7 +243,13 @@ HOW-IT-WORKS.md        architecture and data-flow walkthrough
   smart casual, casual. Occasions themselves are data and you can add your own, but you have to
   tell Mustermind which of those three registers yours reads at. It will not guess at the
   formality of an event it knows nothing about.
-- **The occasion → search-query mapping is coarse.** A custom occasion without an explicit query
-  falls back to its register's default, which is a broad phrase, not a considered one.
+- **The occasion → search-query mapping is a keyword table.** "Goa Trip" infers `men beachwear`
+  from the word *goa*. It is a guess: it is disclosed, shown in the "Find me" field, and
+  overridable, but a label the table does not recognise falls back to something broad.
+- **Register expresses formality, not context.** The rules classify 15 AJIO categories, so
+  beachwear and ethnic wear now get real verdicts. But swimwear can only be a hard stop at a
+  formal occasion and neutral elsewhere — it cannot read as *right* for a Goa trip, because the
+  nearest tier is `casual` and marking it preferred there would make it read right for a Sunday
+  brunch too. That needs a context axis the model does not have.
 
 None of these are hidden in the UI. The factor list shows exactly how much each one contributed.

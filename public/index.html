@@ -45,6 +45,17 @@
         <!-- Options are rendered from brief.occasions; the list grows when a
              shopper or the agent adds one. -->
         <select id="occasion"></select>
+
+        <!-- What AJIO actually gets searched for. Visible because for a
+             shopper-added occasion it is inferred from the label — a guess,
+             and a guess you cannot see or correct is just a wrong answer. -->
+        <label for="occasion-q" class="sublabel">Find me</label>
+        <div class="field-row tight">
+          <input id="occasion-q" type="text" maxlength="80" aria-label="What to search AJIO for" />
+          <button id="occasion-q-apply" class="btn" type="button">Search</button>
+        </div>
+        <p id="occasion-q-note" class="note small" hidden></p>
+
         <button id="occasion-toggle" class="btn-link" type="button" aria-expanded="false" aria-controls="occasion-form">
           + Add an occasion
         </button>
@@ -114,12 +125,24 @@
           <input id="wardrobe-color" type="text" maxlength="24" placeholder="Colour" aria-label="Colour of the item you own" />
           <button id="wardrobe-add" class="btn" type="button">Add</button>
         </div>
+        <!-- Mirrors WARDROBE_BRICKS in lib/state.js. Free text is still
+             accepted and canonicalised server-side; these are the hints. -->
         <datalist id="wardrobe-bricks">
           <option value="Shirts"></option>
           <option value="Tshirts"></option>
           <option value="Trousers &amp; Pants"></option>
           <option value="Jeans"></option>
           <option value="Blazers &amp; Waistcoats"></option>
+          <option value="Shorts &amp; 3/4ths"></option>
+          <option value="Swimwear"></option>
+          <option value="Track Pants"></option>
+          <option value="Sweatshirt &amp; Hoodies"></option>
+          <option value="Kurtas"></option>
+          <option value="2-Piece Ethnic Suit"></option>
+          <option value="Suit Sets"></option>
+          <option value="Co-ord Sets"></option>
+          <option value="Jackets &amp; Coats"></option>
+          <option value="Rainwear and Windcheaters"></option>
         </datalist>
         <p id="wardrobe-note" class="note small" hidden></p>
       </div>

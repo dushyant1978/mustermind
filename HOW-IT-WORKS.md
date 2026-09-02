@@ -153,6 +153,20 @@ A shopper adds "Diwali party" and picks the register it reads at. The verdict th
 
 Adding one is a `record_user_tradeoff` of type `add_occasion`, or the "+ Add an occasion" control. Both hit `POST /api/tradeoff`, which also re-runs the AJIO search because occasion drives the candidate query.
 
+### Register is not the search query
+
+These are two different questions and conflating them was a real bug. "Goa Trip" added at the default smart-casual register fired **`men formal shirt`**, because the query was derived from the register — and register answers *how dressy*, not *what garment*. A Goa trip and a Sunday brunch are both casual and want completely different clothes.
+
+So the query is inferred from the **label's own words** via `OCCASION_THEMES` in `lib/state.js` — beach/goa/pool → `men beachwear`, manali/winter/ski → `men winter jacket`, gym/workout → `men activewear`, wedding/sangeet → `men festive kurta`. Specific themes are ordered before general ones and the first hit wins, so "Manali trip" reaches winter rather than the generic trip theme. Matching is on whole words, so "training" cannot hit the `rain` theme.
+
+Three things keep the guess honest:
+
+- **It is disclosed.** The note says which query was used and which word triggered it. When nothing matches, the fallback is admitted as broad rather than presented as a choice.
+- **It is visible.** The "Find me" field under the occasion dropdown always shows what AJIO is actually being searched for, and `query` is on every occasion in `get_current_style_brief`.
+- **It is correctable.** `set_occasion_query` retargets the selected occasion, for the shopper and the agent alike. A guess you cannot override is just a wrong answer you have to live with.
+
+Every query in the table was checked to return live results. One that returns none is worse than a bland one, because `refreshCandidates()` then silently falls back to demo fixtures.
+
 Two fail-safes:
 
 - **An unresolvable register falls back to smart casual**, the only tier with no `weakBricks`. A brief that arrives without a registry therefore cannot manufacture a hard stop out of nothing. Asserted in `scripts/selfcheck.js`.
@@ -171,6 +185,22 @@ Self-reported, and the honest limit on duplicate detection. Two things make it w
 **Disclosure when it cannot.** Type `"Kurta"` and it is stored, because you do own it — but `recognised: false` comes back, the row is tagged **not scored** in the UI, the tool result marks it `scored: false`, and the response note says in words that it will not move any verdict. The alternative — accepting it silently — makes the wardrobe look more powerful than it is.
 
 Duplicate risk is 1.0 for same category *and* colour (a hard stop), 0.55 for same category only (a near-duplicate, which pushes toward `restyle`). Rewear value counts pairings across the top/bottom split. It does not understand colour theory, formality gradients, or that you might hate the shirt.
+
+### The category taxonomy
+
+`WARDROBE_BRICKS` in `lib/state.js` lists the 15 AJIO bricks the rules can reason about. Every string is AJIO's own, read off live search results rather than invented — `Shorts & 3/4ths` and `Rainwear and Windcheaters` are spelled the way the catalogue spells them.
+
+The taxonomy started at five shirt-family bricks, which was invisible while every query was a shirt query. Once a Goa trip began returning Swimwear and Co-ord Sets, those products fell outside every rule table: no register factor at all, `duplicateRisk` permanently 0, `looksUnlocked` permanently 1. A beachwear list scored mostly `buy` on price and fit alone. For an app whose argument is *recommending nothing when nothing is worth buying*, rubber-stamping a category it cannot reason about is the wrong failure.
+
+The tiers now classify all 15. Three judgement calls worth knowing, because each is arguable:
+
+- **A category may be neutral in a tier.** A coat over formalwear, or a co-ord set at a formal dinner, is in neither `preferredBricks` nor `weakBricks` — no recommendation, no hard stop. Only a claim worth making gets made.
+- **An ethnic suit is not a hard stop at a casual occasion**, though a Western suit is. Overdressed for a brunch is not the same as embarrassing, and a hard stop is too strong a claim.
+- **`smart-casual` still has no `weakBricks`, and must not gain any.** That is what makes it safe as the fallback register.
+
+Whole outfits — co-ord sets, suit sets, ethnic suits, swimwear — are in neither the tops nor the bottoms list, so they unlock no pairings. That 1 is now the intended answer rather than the default that fell out of an unlisted brick.
+
+**The honest remaining gap:** register expresses formality, not context. Swimwear is a hard stop at a formal occasion and neutral everywhere else — it cannot read as *right* for a Goa trip, because the only tier available is `casual`, and marking swimwear preferred there would make it read right for a Sunday brunch too. Expressing that needs a context axis alongside the formality one, which does not exist.
 
 ---
 
@@ -262,7 +292,7 @@ Tool descriptions are treated as product surface, not documentation. Each says w
 ## 12. Changing things safely
 
 ```bash
-node scripts/selfcheck.js                                        # 90 assertions, must be 0 failures
+node scripts/selfcheck.js                                        # 135 assertions, must be 0 failures
 grep -rniE "acf-sensor|sensor-data|x-acf" . --exclude=README.md   # must return nothing
 node --check server.js && for f in lib/*.js public/*.js; do node --check "$f"; done
 node server.js                                                   # then exercise it by hand
@@ -271,7 +301,7 @@ node server.js                                                   # then exercise
 - **Adding a verdict factor:** push it in the right group in `evaluateWearability`, give it a `source`, and decide explicitly whether it belongs in the hard-stop tier. A factor without a source breaks the ledger's whole claim.
 - **Adding an occasion:** no code change. That is the point.
 - **Adding a register tier:** `REGISTER_TIERS` in `lib/verdict.js`, plus a `REGISTER_QUERY` entry in `lib/state.js` and an `<option>` in the subform.
-- **Adding a wardrobe category:** `WARDROBE_BRICKS` and `BRICK_ALIASES` in `lib/state.js`, plus the `looksUnlocked` top/bottom split and `BRICK_SINGULAR` in `lib/verdict.js` if the prose needs it.
+- **Adding a wardrobe category:** five places, and missing one leaves the category half-known — `WARDROBE_BRICKS` and `BRICK_ALIASES` in `lib/state.js`; `preferredBricks`/`weakBricks` on the tiers it is classified by, the `looksUnlocked` top/bottom split, and `BRICK_SINGULAR` in `lib/verdict.js`; and the datalist in `public/index.html`. Use the real AJIO brick string, not a guess.
 - **Adding a tool:** don't, without raising it. Five is the design.
 
 Add an assertion for any bug you fix. The suite exists because four real bugs were caught by it during the first build, and several more since.
