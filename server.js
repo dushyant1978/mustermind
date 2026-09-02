@@ -120,15 +120,26 @@ const routes = {
         actor: body.actor === 'agent' ? 'agent' : 'user',
         kind: 'tradeoff',
         summary: result.summary,
-        detail: { type: body.type, value: body.value },
+        detail: { type: body.type, value: body.value, note: result.note ?? null },
       });
-      // Occasion drives OCCASION_QUERY (search) and OCCASION_RULES (scoring),
-      // so a real change should refresh the candidate list from live search.
-      if (body.type === 'set_occasion') await refreshCandidates();
+      // Occasion drives both the search query and the register the verdict
+      // scores against, so a real change refreshes the candidate list.
+      // add_occasion also selects the occasion it just created.
+      if (body.type === 'set_occasion' || body.type === 'add_occasion') await refreshCandidates();
     }
 
     const results = await assessAll(state.brief);
-    json(res, 200, { ok: true, changed: result.changed, summary: result.summary, brief: state.brief, results, ledger: state.ledger });
+    json(res, 200, {
+      ok: true,
+      changed: result.changed,
+      summary: result.summary,
+      // Present when the change was accepted but not exactly as asked — a
+      // category we could not map, a query we defaulted. Surfaced, not buried.
+      note: result.note ?? null,
+      brief: state.brief,
+      results,
+      ledger: state.ledger,
+    });
   },
 
   'POST /api/handoff/prepare': async (req, res) => {

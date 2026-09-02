@@ -42,11 +42,41 @@
     <div class="card">
       <div class="field">
         <label for="occasion">Occasion</label>
-        <select id="occasion">
-          <option value="client-dinner">Client dinner</option>
-          <option value="work">Work</option>
-          <option value="weekend">Weekend</option>
-        </select>
+        <!-- Options are rendered from brief.occasions; the list grows when a
+             shopper or the agent adds one. -->
+        <select id="occasion"></select>
+        <button id="occasion-toggle" class="btn-link" type="button" aria-expanded="false" aria-controls="occasion-form">
+          + Add an occasion
+        </button>
+
+        <div id="occasion-form" class="subform" hidden>
+          <div class="field">
+            <label for="occasion-label">What's the occasion?</label>
+            <input id="occasion-label" type="text" maxlength="40" placeholder="e.g. Diwali party" />
+          </div>
+          <div class="field">
+            <label for="occasion-register">Reads as</label>
+            <select id="occasion-register">
+              <option value="formal">Formal</option>
+              <option value="smart-casual" selected>Smart casual</option>
+              <option value="casual">Casual</option>
+            </select>
+            <p class="note small">
+              Formal rules out a tshirt outright, casual rules out a blazer, smart casual rules
+              nothing out. This is what decides whether a garment is skipped for the occasion
+              rather than just marked down, so it is yours to set, not ours to guess.
+            </p>
+          </div>
+          <div class="field">
+            <label for="occasion-query">Find me (optional)</label>
+            <input id="occasion-query" type="text" maxlength="80" placeholder="e.g. men festive kurta" />
+          </div>
+          <div class="field-row tight">
+            <button id="occasion-add" class="btn btn-primary" type="button">Add occasion</button>
+            <button id="occasion-cancel" class="btn" type="button">Cancel</button>
+          </div>
+          <p id="occasion-error" class="note small error-note" hidden></p>
+        </div>
       </div>
 
       <div class="field-row">
@@ -77,6 +107,21 @@
       <div class="field">
         <span class="label">Wardrobe you already own</span>
         <ul id="wardrobe" class="wardrobe"></ul>
+        <div class="field-row tight">
+          <input id="wardrobe-cat" type="text" maxlength="40" placeholder="e.g. Jeans" aria-label="Category you own" list="wardrobe-bricks" />
+        </div>
+        <div class="field-row tight">
+          <input id="wardrobe-color" type="text" maxlength="24" placeholder="Colour" aria-label="Colour of the item you own" />
+          <button id="wardrobe-add" class="btn" type="button">Add</button>
+        </div>
+        <datalist id="wardrobe-bricks">
+          <option value="Shirts"></option>
+          <option value="Tshirts"></option>
+          <option value="Trousers &amp; Pants"></option>
+          <option value="Jeans"></option>
+          <option value="Blazers &amp; Waistcoats"></option>
+        </datalist>
+        <p id="wardrobe-note" class="note small" hidden></p>
       </div>
     </div>
 

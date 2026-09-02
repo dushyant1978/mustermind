@@ -21,7 +21,18 @@ const DIR_GLYPH = { '+': '+', '-': '−', '0': '·' };
 function renderBrief(s) {
   if (!s.brief) return;
   const b = s.brief;
-  if ($('occasion').value !== b.occasion) $('occasion').value = b.occasion;
+
+  // The occasion list is state, not markup — a shopper or the agent can add to
+  // it. Rebuild only when the set actually changed, so an open dropdown isn't
+  // yanked out from under the pointer on every unrelated re-render.
+  const sel = $('occasion');
+  const wanted = (b.occasions ?? []).map((o) => o.id).join('|');
+  if (sel.dataset.ids !== wanted) {
+    sel.innerHTML = (b.occasions ?? []).map((o) =>
+      `<option value="${esc(o.id)}">${esc(o.label)}</option>`).join('');
+    sel.dataset.ids = wanted;
+  }
+  if (sel.value !== b.occasion) sel.value = b.occasion;
   if (document.activeElement !== $('budget')) $('budget').value = b.budgetINR ?? '';
   if (document.activeElement !== $('pin')) $('pin').value = b.pin ?? '';
   if (document.activeElement !== $('deadline')) $('deadline').value = b.deadline ?? '';
@@ -33,10 +44,27 @@ function renderBrief(s) {
     `<span class="chip">${esc(v)}<button type="button" data-remove-kind="${kind}" data-remove="${esc(v)}" aria-label="Stop avoiding ${esc(v)}">&times;</button></span>`
   ).join('');
 
+  // recognised === false means the category matched none of the bricks the
+  // rules compare against. Marked, because an item that silently moves no
+  // verdict while sitting in the list is the confusing outcome.
   $('wardrobe').innerHTML = b.wardrobe.length
-    ? b.wardrobe.map((w) =>
-      `<li><span>${esc(w.descriptor || w.category)}</span><span class="cat">${esc(w.category)}</span></li>`).join('')
+    ? b.wardrobe.map((w) => `
+      <li>
+        <span>${esc(w.descriptor || w.category)}</span>
+        <span class="cat">${w.recognised === false
+          ? '<span class="unscored" title="Outside the categories duplicate and rewear scoring covers">not scored</span>'
+          : esc(w.category)}</span>
+        <button type="button" class="chip-x" data-remove-wardrobe="${esc(w.id)}" aria-label="Remove ${esc(w.descriptor || w.category)}">&times;</button>
+      </li>`).join('')
     : '<li><span class="cat">Nothing listed</span></li>';
+}
+
+/** Transient one-line feedback under a subform. Cleared by the next action. */
+function showNote(id, text) {
+  const el = $(id);
+  if (!el) return;
+  el.textContent = text ?? '';
+  el.hidden = !text;
 }
 
 const SKELETON_CARD = `
@@ -205,6 +233,39 @@ function wireEvents() {
     store.applyTradeoff({ type: 'set_occasion', value: e.target.value });
   });
 
+  // --- add an occasion ----------------------------------------------------
+  const occasionForm = (open) => {
+    $('occasion-form').hidden = !open;
+    $('occasion-toggle').setAttribute('aria-expanded', String(open));
+    showNote('occasion-error', null);
+    if (open) $('occasion-label').focus();
+  };
+
+  $('occasion-toggle').addEventListener('click', () => occasionForm($('occasion-form').hidden));
+  $('occasion-cancel').addEventListener('click', () => {
+    $('occasion-label').value = '';
+    $('occasion-query').value = '';
+    occasionForm(false);
+  });
+
+  $('occasion-add').addEventListener('click', async () => {
+    const label = $('occasion-label').value.trim();
+    if (!label) return showNote('occasion-error', 'Give the occasion a name.');
+    const r = await store.applyTradeoff({
+      type: 'add_occasion',
+      value: { label, register: $('occasion-register').value, query: $('occasion-query').value.trim() || undefined },
+    });
+    if (!r.ok) return showNote('occasion-error', r.error);
+    $('occasion-label').value = '';
+    $('occasion-query').value = '';
+    occasionForm(false);
+  });
+
+  // Enter in the label field is the obvious way to submit a two-field form.
+  $('occasion-label').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); $('occasion-add').click(); }
+  });
+
   const debounce = (fn, ms = 450) => {
     let t;
     return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
@@ -228,6 +289,37 @@ function wireEvents() {
     const v = $('avoid-input').value.trim();
     if (!v) return;
     store.applyTradeoff({ type: 'avoid_fit', value: v }).then(() => { $('avoid-input').value = ''; });
+  });
+
+  // --- wardrobe -----------------------------------------------------------
+  const addWardrobeItem = async () => {
+    const category = $('wardrobe-cat').value.trim();
+    if (!category) return showNote('wardrobe-note', 'Name a category you own, e.g. Jeans.');
+    const r = await store.applyTradeoff({
+      type: 'add_wardrobe_item',
+      value: { category, color: $('wardrobe-color').value.trim() },
+    });
+    if (!r.ok) return showNote('wardrobe-note', r.error);
+    $('wardrobe-cat').value = '';
+    $('wardrobe-color').value = '';
+    // r.note explains anything the server did differently from what was typed
+    // — a category filed under a different brick, or one it cannot score.
+    showNote('wardrobe-note', r.note ?? (r.changed ? null : r.summary));
+  };
+
+  $('wardrobe-add').addEventListener('click', addWardrobeItem);
+  for (const id of ['wardrobe-cat', 'wardrobe-color']) {
+    $(id).addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); addWardrobeItem(); }
+    });
+  }
+
+  $('wardrobe').addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-remove-wardrobe]');
+    if (!btn) return;
+    showNote('wardrobe-note', null);
+    const r = await store.applyTradeoff({ type: 'remove_wardrobe_item', value: btn.dataset.removeWardrobe });
+    if (!r.ok) showNote('wardrobe-note', r.error);
   });
 
   $('avoid-list').addEventListener('click', (e) => {
@@ -255,7 +347,11 @@ function wireEvents() {
 
   $('handoff-cancel').addEventListener('click', () => store.clearHandoff());
 
-  $('reset').addEventListener('click', () => store.reset());
+  $('reset').addEventListener('click', () => {
+    showNote('wardrobe-note', null);
+    showNote('occasion-error', null);
+    store.reset();
+  });
 }
 
 async function boot() {

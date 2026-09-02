@@ -290,12 +290,44 @@ select {
   display: flex; justify-content: space-between; gap: 8px; align-items: center;
 }
 .wardrobe li:last-child { border-bottom: 0; }
+/* Descriptor takes the slack so the category tag and remove button stay put. */
+.wardrobe li > span:first-child { flex: 1; min-width: 0; }
 .wardrobe .cat {
   color: var(--text-2); font-size: 10px; font-weight: 600;
   text-transform: uppercase; letter-spacing: 0.06em;
   padding: 3px 8px; background: var(--surface-2); border-radius: 4px;
   white-space: nowrap;
 }
+/* A wardrobe item whose category matched none of the scored bricks. */
+.wardrobe .unscored { color: var(--wait); }
+
+/* Remove affordance, shared by the wardrobe list. Same shape as .chip button
+   so the two "get rid of this" controls read as one thing. */
+.chip-x {
+  flex: none; border: 0; background: none; cursor: pointer; color: var(--text-3);
+  font-size: 15px; line-height: 1;
+  width: 18px; height: 18px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: all var(--dur) var(--ease);
+}
+.chip-x:hover { color: var(--skip); background: var(--skip-bg); }
+
+/* --- inline subform ----------------------------------------------------- */
+/* Add-an-occasion. Indented and rule-marked so it reads as a detour off the
+   field above rather than another top-level field. */
+.btn-link {
+  border: 0; background: none; padding: 0; margin-top: 8px;
+  font: inherit; font-size: 12.5px; font-weight: 500;
+  color: var(--accent); cursor: pointer;
+}
+.btn-link:hover { text-decoration: underline; }
+.subform {
+  margin-top: 12px; padding: 14px; border-radius: var(--radius-sm);
+  background: var(--surface-2); border: 1px solid var(--border);
+}
+.subform .field:last-of-type { margin-bottom: 0; }
+.subform .note { margin: 6px 0 0; }
+.error-note { color: var(--skip); }
 
 /* --- section head ------------------------------------------------------- */
 .section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 12px; }

@@ -24,12 +24,18 @@ const ok = (obj) => JSON.stringify(obj);
 function briefSummary(brief) {
   return {
     occasion: brief.occasion,
+    // The valid set for set_occasion, and it grows at runtime — never assume
+    // the three the demo boots with are all there are.
+    occasions: (brief.occasions ?? []).map((o) => ({ id: o.id, label: o.label, register: o.register })),
     city: brief.city,
     pinCode: brief.pin,
     budgetINR: brief.budgetINR,
     deadline: brief.deadline,
     avoiding: { fits: brief.avoid.fits, colors: brief.avoid.colors },
-    wardrobe: brief.wardrobe.map((w) => ({ category: w.category, color: w.color })),
+    // id is included so remove_wardrobe_item has something to name.
+    wardrobe: brief.wardrobe.map((w) => ({
+      id: w.id, category: w.category, color: w.color, scored: w.recognised !== false,
+    })),
     candidateCount: brief.candidates.length,
   };
 }
@@ -77,6 +83,9 @@ function verdictSummary(r) {
     duplicateRisk: v.duplicateRisk,
     looksUnlocked: v.looksUnlocked,
     factors: v.factors.map((f) => ({ label: f.label, direction: f.direction, why: f.evidence, source: f.source })),
+    // The register the occasion resolved to. A wrong-register decision is a
+    // hard stop, so the agent needs to be able to say what it was measured on.
+    register: v.register,
     dataSource: v.provenance,
   };
 }
@@ -92,7 +101,11 @@ const TOOLS = [
       'a bare verdict is not useful. ' +
       'This tool returns the shopper\'s current wearability brief: occasion, city and PIN code, ' +
       'budget in INR, the date they need the item by, fits and colours they are avoiding, and the ' +
-      'wardrobe items they already own. Call this FIRST in any session — every other tool is ' +
+      'wardrobe items they already own. It also returns "occasions" — every occasion available to ' +
+      'set_occasion, with the register each reads at. That list grows when the shopper adds one, so ' +
+      'read it here rather than assuming a fixed set. Wardrobe items marked scored:false are listed ' +
+      'but sit outside the categories the rules compare against, so they move no verdict. ' +
+      'Call this FIRST in any session — every other tool is ' +
       'scored against this brief, and recommending without it will contradict constraints the ' +
       'shopper already stated. Read only.',
     annotations: { readOnlyHint: true, untrustedContentHint: false },
@@ -168,21 +181,31 @@ const TOOLS = [
       'Records a change the shopper has agreed to and re-scores every candidate against it. Use ' +
       'this when they relax or tighten a constraint — "I could stretch to 4000", "actually slim ' +
       'fit is fine", "I need it by Friday", "I also own a navy blazer", "make it a weekend brief". ' +
-      'Changing occasion also refreshes the live candidate list from AJIO search. ' +
+      'Use add_occasion when they name an occasion that is not already in the brief\'s occasions ' +
+      'list ("it\'s for a Diwali party"): you must supply the register it reads at — "formal", ' +
+      '"smart-casual" or "casual" — because that is what decides whether a garment is a hard stop ' +
+      'for it. Ask the shopper which one rather than guessing at a formality you cannot see. ' +
+      'Changing or adding an occasion also refreshes the live candidate list from AJIO search. ' +
       'CHANGES STATE: only call it after the shopper has actually said so, never to explore a ' +
       'hypothetical. The change is written to Mustermind\'s Decision Ledger under actor "agent" ' +
-      'and is visible to the shopper. Returns the updated verdicts.',
+      'and is visible to the shopper. Returns the updated verdicts, and a "note" whenever the ' +
+      'change was accepted but not exactly as asked — relay the note, do not drop it.',
     annotations: { readOnlyHint: false, untrustedContentHint: false },
     inputSchema: {
       type: 'object',
       properties: {
         type: {
           type: 'string',
-          enum: ['set_budget', 'avoid_fit', 'allow_fit', 'avoid_color', 'set_deadline', 'set_pin', 'set_occasion', 'add_wardrobe_item'],
+          enum: ['set_budget', 'avoid_fit', 'allow_fit', 'avoid_color', 'set_deadline', 'set_pin', 'set_occasion', 'add_occasion', 'add_wardrobe_item', 'remove_wardrobe_item'],
           description: 'Which constraint to change.',
         },
         value: {
-          description: 'Number for set_budget. Text for fits/colours. YYYY-MM-DD for set_deadline. 6 digits for set_pin. One of client-dinner/work/weekend for set_occasion. Object {category,color,descriptor} for add_wardrobe_item.',
+          description: 'Number for set_budget. Text for fits/colours. YYYY-MM-DD for set_deadline. '
+            + '6 digits for set_pin. An occasion id from the brief\'s occasions list for set_occasion. '
+            + 'Object {label, register, query} for add_occasion — register is formal | smart-casual | casual, '
+            + 'query is an optional AJIO search phrase and defaults to the register\'s. '
+            + 'Object {category, color} for add_wardrobe_item — category is free text and is filed under the '
+            + 'nearest scored category where one matches. The wardrobe item id for remove_wardrobe_item.',
         },
       },
       required: ['type', 'value'],
@@ -193,6 +216,7 @@ const TOOLS = [
       return ok({
         applied: r.summary,
         changed: r.changed,
+        note: r.note ?? undefined,
         brief: briefSummary(r.brief),
         results: r.results.map(verdictSummary),
       });

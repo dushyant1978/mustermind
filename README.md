@@ -8,10 +8,15 @@ It runs entirely on your machine. It does not modify AJIO's web or mobile apps, 
 
 ```bash
 node server.js          # http://localhost:5173
-node scripts/selfcheck.js   # 40 assertions, no test framework
+node scripts/selfcheck.js   # 90 assertions, no test framework
 ```
 
 Node 20+. No dependencies.
+
+**[HOW-IT-WORKS.md](HOW-IT-WORKS.md) — the full walkthrough:** the module boundaries, the request
+lifecycle, one verdict traced end to end, the rule engine in full, and a table of where each
+honesty rule is actually enforced and what guards it. Start there if you want to understand the
+system rather than run it.
 
 ---
 
@@ -62,7 +67,7 @@ Registered via `document.modelContext.registerTool`, with `navigator.modelContex
 | `get_current_style_brief` | no | The brief everything else is scored against. Call first. |
 | `get_product_truth` | no | Price, fabric, fit, per-size measurements in cm, live stock, crowd fit ratings, delivery. |
 | `evaluate_wearability` | no | buy / restyle / wait / skip, with factors and their sources. |
-| `record_user_tradeoff` | **yes** | Applies a constraint the shopper agreed to, then re-scores everything. |
+| `record_user_tradeoff` | **yes** | Applies a constraint the shopper agreed to, then re-scores everything. Also adds occasions and wardrobe items. |
 | `prepare_purchase_handoff` | **yes** | Two-phase. Returns a PDP link only after a human click. |
 
 ### The handoff gate
@@ -144,7 +149,7 @@ node scripts/selfcheck.js
 grep -rniE "acf-sensor|sensor-data|x-acf" . --exclude=README.md   # must return nothing
 ```
 
-The 40 assertions cover the parsing traps and the decision rules that the demo depends on:
+The 90 assertions cover the parsing traps and the decision rules that the demo depends on:
 
 - `"2.1K"` is a display string, not a number — an unparseable rater count must disable the crowd prior rather than guess
 - `"15 %"` has a space before the percent sign
@@ -153,6 +158,10 @@ The 40 assertions cover the parsing traps and the decision rules that the demo d
 - serviceable-with-no-date must not become a delivery claim
 - missing delivery evidence must not read as deliverable
 - every factor carries a source
+- a brief with no resolvable register falls back to the one tier that has no hard stops, so a
+  hard stop can never be invented out of missing data
+- a wardrobe category typed as "chinos" reaches the verdict as `Trousers & Pants`, and one that
+  matches nothing is stored but reported as unscored
 - the handoff token rejects guesses, replays, and size swaps
 
 ---
@@ -215,9 +224,10 @@ lib/fixtures.js        demo data in raw shape
 public/webmcp.js       the five tool registrations
 public/store.js        shared state — UI and agent write to the same place
 public/app.js          rendering and the control fallbacks
-scripts/selfcheck.js   48 assertions
+scripts/selfcheck.js   90 assertions
 Dockerfile             container image, non-root, no build step
 render.yaml            Render Blueprint for one-click deploy
+HOW-IT-WORKS.md        architecture and data-flow walkthrough
 ```
 
 `lib/verdict.js` is a rule engine on purpose. The agent has to narrate why a verdict is what it is, and a scorer you can't read gives it nothing to say.
@@ -229,6 +239,11 @@ render.yaml            Render Blueprint for one-click deploy
 - **Size recommendation is a crowd nudge, not a fit model.** With no purchase history, the honest ceiling is "the middle of the ladder, moved one step if enough raters say it runs small". It does not claim to know your body.
 - **Rewear value is crude.** It counts pairings by category. It does not understand colour theory, formality gradients, or that you might hate the shirt.
 - **The wardrobe is self-reported**, so duplicate detection is only as good as what you typed in.
-- **Occasion rules are a small hand-written table** in `lib/verdict.js`, covering three occasions.
+- **Register rules are a small hand-written table** of three tiers in `lib/verdict.js` — formal,
+  smart casual, casual. Occasions themselves are data and you can add your own, but you have to
+  tell Mustermind which of those three registers yours reads at. It will not guess at the
+  formality of an event it knows nothing about.
+- **The occasion → search-query mapping is coarse.** A custom occasion without an explicit query
+  falls back to its register's default, which is a broad phrase, not a considered one.
 
 None of these are hidden in the UI. The factor list shows exactly how much each one contributed.

@@ -7,7 +7,7 @@ import { normalizeProduct, parseRaterCount, sanitize, safeImageUrl } from '../li
 import { evaluateWearability } from '../lib/verdict.js';
 import { FIXTURES, EDD_FIXTURES } from '../lib/fixtures.js';
 import { isAllowedStyleCode, allowStyleCodes, clearAllowedStyleCodes } from '../lib/upstream.js';
-import { applyTradeoff, state, createHandoff, consumeHandoff, resetSession } from '../lib/state.js';
+import { applyTradeoff, state, createHandoff, consumeHandoff, resetSession, canonicalBrick } from '../lib/state.js';
 
 let pass = 0, fail = 0;
 const ok = (name, cond, extra = '') => {
@@ -18,12 +18,18 @@ const ok = (name, cond, extra = '') => {
 // Must mirror DEFAULT_BRIEF in lib/state.js. If they drift, the tests stop
 // describing the app the demo actually runs.
 const brief = () => ({
-  occasion: 'client-dinner', city: 'Bengaluru', pin: '560029',
+  occasion: 'client-dinner',
+  occasions: [
+    { id: 'client-dinner', label: 'Client dinner', register: 'formal', query: 'men formal shirt', builtIn: true },
+    { id: 'work', label: 'Work', register: 'smart-casual', query: 'men formal shirt', builtIn: true },
+    { id: 'weekend', label: 'Weekend', register: 'casual', query: 'men casual shirt', builtIn: true },
+  ],
+  city: 'Bengaluru', pin: '560029',
   budgetINR: 3000, deadline: isoIn(5),
   avoid: { fits: ['Slim Fit'], colors: [] },
   wardrobe: [
-    { id: 'w1', category: 'Trousers & Pants', color: 'Black', descriptor: 'Black formal trousers' },
-    { id: 'w2', category: 'Shirts', color: 'White', descriptor: 'White cotton shirt' },
+    { id: 'w1', category: 'Trousers & Pants', color: 'Black', descriptor: 'Black formal trousers', recognised: true },
+    { id: 'w2', category: 'Shirts', color: 'White', descriptor: 'White cotton shirt', recognised: true },
   ],
   candidates: Object.keys(FIXTURES),
 });
@@ -120,6 +126,124 @@ ok('unknown tradeoff rejected', applyTradeoff({ type: 'nonsense', value: 1 }).ok
 ok('occasion change applies', applyTradeoff({ type: 'set_occasion', value: 'weekend' }).ok && state.brief.occasion === 'weekend');
 ok('unknown occasion rejected', applyTradeoff({ type: 'set_occasion', value: 'brunch' }).ok === false);
 
+console.log('\ncustom occasions');
+{
+  resetSession();
+  const add = applyTradeoff({ type: 'add_occasion', value: { label: 'Diwali party', register: 'formal' } });
+  ok('custom occasion is added and selected', add.ok && state.brief.occasion === 'diwali-party', add.error ?? state.brief.occasion);
+  ok('adding an occasion makes it valid for set_occasion',
+    applyTradeoff({ type: 'set_occasion', value: 'diwali-party' }).ok === true);
+
+  // The whole point of the tier: a label nobody hand-wrote a rule for still
+  // hard-stops a polo, and the ledger can say which register did it.
+  const dinner = { ...brief(), occasions: state.brief.occasions, occasion: 'diwali-party' };
+  const polo = evaluateWearability(P('702723511'), D('702723511'), dinner);
+  ok('a formal custom occasion hard-stops a tshirt', polo.decision === 'skip', polo.decision);
+  ok('the hard stop names the register it used',
+    polo.register.tier === 'formal' && polo.register.occasion === 'Diwali party', JSON.stringify(polo.register));
+  ok('the factor cites the shopper\'s own label',
+    polo.factors.some((f) => f.id === 'occasion' && /diwali party/.test(f.evidence)));
+
+  applyTradeoff({ type: 'add_occasion', value: { label: 'Sunday brunch', register: 'casual' } });
+  const brunch = { ...brief(), occasions: state.brief.occasions, occasion: 'sunday-brunch' };
+  ok('a casual custom occasion does not hard-stop a tshirt',
+    evaluateWearability(P('702723511'), D('702723511'), brunch).decision !== 'skip');
+
+  ok('missing label rejected', applyTradeoff({ type: 'add_occasion', value: { register: 'formal' } }).ok === false);
+  ok('label with no letters or digits rejected',
+    applyTradeoff({ type: 'add_occasion', value: { label: '!!!', register: 'formal' } }).ok === false);
+  ok('unknown register rejected',
+    applyTradeoff({ type: 'add_occasion', value: { label: 'Board meeting', register: 'black-tie' } }).ok === false);
+  // Labels reach the occasion dropdown and the factor prose, so markup in one
+  // must never survive as markup.
+  const marked = applyTradeoff({ type: 'add_occasion', value: { label: '<b>Sangeet</b>', register: 'formal' } });
+  ok('markup is stripped from a custom label',
+    marked.ok && state.brief.occasions.at(-1).label === 'Sangeet', state.brief.occasions.at(-1)?.label);
+  // A query goes to AJIO search; anything it would not accept is refused here
+  // rather than silently dropped one search later.
+  ok('unsearchable query rejected',
+    applyTradeoff({ type: 'add_occasion', value: { label: 'Mehendi', register: 'casual', query: 'shirt?q=<x>' } }).ok === false);
+
+  const before = state.brief.occasions.length;
+  const again = applyTradeoff({ type: 'add_occasion', value: { label: 'Diwali party', register: 'casual' } });
+  ok('re-adding an occasion selects it instead of duplicating',
+    again.ok && state.brief.occasions.length === before && state.brief.occasion === 'diwali-party');
+  ok('re-adding does not silently rewrite the register',
+    state.brief.occasions.find((o) => o.id === 'diwali-party').register === 'formal');
+
+  ok('reset restores only the built-in occasions',
+    (resetSession(), state.brief.occasions.length === 3 && state.brief.occasions.every((o) => o.builtIn)));
+}
+
+// Fail-safe. verdict.js resolves an unresolvable register to smart casual,
+// which has no weakBricks — so a brief with no registry cannot manufacture a
+// hard stop out of nothing. Inventing one is the worst available failure.
+{
+  const noRegistry = { ...brief(), occasions: undefined };
+  const polo = evaluateWearability(P('702723511'), D('702723511'), noRegistry);
+  ok('an unresolvable occasion never invents a hard stop',
+    polo.decision !== 'skip' && polo.register.tier === 'smart-casual',
+    `${polo.decision} / ${polo.register.tier}`);
+}
+
+console.log('\nwardrobe');
+{
+  resetSession();
+  // duplicateRisk() and looksUnlocked() compare exact brick strings, so an
+  // un-canonicalised category is stored but influences nothing. That silent
+  // no-op is what this map exists to prevent.
+  ok('"jeans" canonicalises to Jeans', canonicalBrick('jeans').brick === 'Jeans');
+  ok('"T-Shirt" canonicalises to Tshirts', canonicalBrick('T-Shirt').brick === 'Tshirts');
+  ok('"chinos" canonicalises to Trousers & Pants', canonicalBrick('chinos').brick === 'Trousers & Pants');
+  ok('a canonical brick round-trips', canonicalBrick('Trousers & Pants').brick === 'Trousers & Pants');
+  ok('"polo shirt" prefers Tshirts over Shirts', canonicalBrick('polo shirt').brick === 'Tshirts',
+    canonicalBrick('polo shirt').brick);
+  ok('a phrase matches on a contained word', canonicalBrick('black formal trousers').brick === 'Trousers & Pants');
+  ok('an unmatched category is reported, not guessed',
+    canonicalBrick('kurta').brick === null && canonicalBrick('kurta').recognised === false);
+
+  const add = applyTradeoff({ type: 'add_wardrobe_item', value: { category: 'blazer', color: 'Charcoal' } });
+  ok('a typed category is filed under its brick',
+    add.ok && state.brief.wardrobe.at(-1).category === 'Blazers & Waistcoats', state.brief.wardrobe.at(-1)?.category);
+  ok('filing under a different brick is disclosed', /Blazers & Waistcoats/.test(add.note ?? ''), add.note);
+
+  // The end-to-end claim: an item typed by hand actually moves a verdict.
+  // The blazer is the demo's one buy once the budget is raised; owning it
+  // already has to turn that into a duplicate skip.
+  const owned = { ...brief(), budgetINR: 6000, wardrobe: state.brief.wardrobe };
+  const blazer = evaluateWearability(P('705678901'), D('705678901'), owned);
+  ok('an added item reaches the verdict', blazer.decision === 'skip', blazer.decision);
+  ok('and is attributed to the shopper',
+    blazer.factors.some((f) => f.id === 'duplicate' && f.source === 'user'));
+
+  const bareString = applyTradeoff({ type: 'add_wardrobe_item', value: 'Jeans' });
+  ok('a bare string is accepted as the category',
+    bareString.ok && state.brief.wardrobe.at(-1).category === 'Jeans');
+  ok('adding the same category and colour twice changes nothing',
+    applyTradeoff({ type: 'add_wardrobe_item', value: 'Jeans' }).changed === false);
+
+  const unknown = applyTradeoff({ type: 'add_wardrobe_item', value: { category: 'Kurta', color: 'Cream' } });
+  const stored = state.brief.wardrobe.at(-1);
+  ok('an unscorable item is still listed', unknown.ok && stored.category === 'Kurta');
+  ok('and is marked as unscored rather than looking accepted',
+    stored.recognised === false && /will not move any verdict/.test(unknown.note ?? ''), unknown.note);
+
+  ok('markup is stripped from a category',
+    applyTradeoff({ type: 'add_wardrobe_item', value: { category: '<i>Kurta</i>', color: 'Blue' } }).ok
+    && state.brief.wardrobe.at(-1).category === 'Kurta', state.brief.wardrobe.at(-1)?.category);
+  ok('a category with no text rejected', applyTradeoff({ type: 'add_wardrobe_item', value: { color: 'Red' } }).ok === false);
+
+  const id = state.brief.wardrobe.at(-1).id;
+  const n = state.brief.wardrobe.length;
+  ok('removing by id drops exactly one item',
+    applyTradeoff({ type: 'remove_wardrobe_item', value: id }).ok && state.brief.wardrobe.length === n - 1);
+  ok('removing an unknown id rejected',
+    applyTradeoff({ type: 'remove_wardrobe_item', value: 'nope' }).ok === false);
+  ok('removing with no id rejected',
+    applyTradeoff({ type: 'remove_wardrobe_item', value: '' }).ok === false);
+  resetSession();
+}
+
 const raised = evaluateWearability(P('705678901'), D('705678901'), { ...brief(), budgetINR: 6000 });
 ok('raising budget turns the blazer into the buy', raised.decision === 'buy', raised.decision);
 ok('nothing is a buy at the starting budget',
@@ -154,6 +278,22 @@ ok('unknown token rejected', consumeHandoff('made-up-id', { styleCode: '70123456
 // and clears the modal so a fresh click retries.
 const orphan = consumeHandoff(undefined, { styleCode: '701234567', size: 'L' });
 ok('orphaned token: undefined id rejected cleanly', orphan.ok === false && orphan.error === 'no such confirmation', orphan.error);
+
+
+
+console.log('\nlive-data edge cases');
+{
+  // A live product came back with a whitespace-only fittingType, which is
+  // truthy — it fired a "Fit works for you" factor with blank evidence.
+  const raw = structuredClone(FIXTURES['701234567']);
+  raw.productDetails.featureData = raw.productDetails.featureData.filter((f) => f.name !== 'Fit');
+  raw.productDetails.sizeData.fittingType = '   ';
+  const p = normalizeProduct(raw, { provenance: 'fixture', styleCode: '701234567' });
+  ok('whitespace-only fit type normalizes to null', p.fit.type === null, JSON.stringify(p.fit.type));
+  const vv = evaluateWearability(p, D('701234567'), brief());
+  ok('no factor is emitted with empty evidence', vv.factors.every((f) => String(f.evidence).trim().length > 0),
+    JSON.stringify(vv.factors.filter((f) => !String(f.evidence).trim()).map((f) => f.label)));
+}
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

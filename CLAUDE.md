@@ -26,7 +26,7 @@ lib/fixtures.js        demo data, stored in RAW aggregator shape
 public/webmcp.js       the five tool registrations
 public/store.js        shared client state — UI and agent write to the same place
 public/app.js          rendering, and a control fallback for every tool
-scripts/selfcheck.js   40 assertions, no framework
+scripts/selfcheck.js   90 assertions, no framework
 ```
 
 `lib/*` must stay free of browser globals. `public/*` must stay free of Node APIs.
@@ -89,3 +89,11 @@ Add an assertion for any bug you fix. The suite exists because four real bugs we
 - Do not widen the style-code allowlist by default; that is what `POW_ALLOW_ANY_STYLE=1` is for.
 - Do not consult live delivery for a product that came back as a fixture. A fabricated SKU gets a truthful "not serviceable" that says nothing about the garment. `lib/upstream.js` already guards this.
 - Do not make wrong-register a soft deduction. It is a hard stop, and that is the single most important product decision in the repo — see HANDOFF.md.
+- Do not hard-code an occasion list. Occasions are data in `lib/state.js`; `lib/verdict.js` owns
+  the three register tiers and must never see an occasion *name*. A shopper-added occasion picks
+  its register, and an unresolvable one falls back to smart casual — the only tier with no
+  weakBricks — so a hard stop can never be invented from missing data.
+- Do not let a wardrobe category reach the brief un-canonicalised. `duplicateRisk()` and
+  `looksUnlocked()` compare exact brick strings, so raw text is stored-but-inert. Run it through
+  `canonicalBrick()`, and when it matches nothing, say so (`recognised: false`) rather than
+  letting the item look accepted.
